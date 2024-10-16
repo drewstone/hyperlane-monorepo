@@ -62,55 +62,145 @@ export const icaOwnerChain = 'ethereum';
 // Found by running:
 // yarn tsx ./scripts/get-owner-ica.ts -e mainnet3 --ownerChain ethereum --destinationChains <chain1> <chain2> ...
 export const icas: Partial<
-  Record<(typeof supportedChainNames)[number], Address>
+  Record<
+    (typeof supportedChainNames)[number],
+    {
+      ica: Address;
+      ism: Address;
+    }
+  >
 > = {
-  viction: '0x23ed65DE22ac29Ec1C16E75EddB0cE3A187357b4',
-  inevm: '0xFDF9EDcb2243D51f5f317b9CEcA8edD2bEEE036e',
+  viction: {
+    ica: '0x23ed65DE22ac29Ec1C16E75EddB0cE3A187357b4',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  inevm: {
+    ica: '0xFDF9EDcb2243D51f5f317b9CEcA8edD2bEEE036e',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
 
   // Jul 26, 2024 batch
   // -------------------------------------
-  xlayer: '0x1571c482fe9E76bbf50829912b1c746792966369',
-  cheesechain: '0xEe2C5320BE9bC7A1492187cfb289953b53E3ff1b',
-  worldchain: '0x1996DbFcFB433737fE404F58D2c32A7f5f334210',
+  xlayer: {
+    ica: '0x1571c482fe9E76bbf50829912b1c746792966369',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  cheesechain: {
+    ica: '0xEe2C5320BE9bC7A1492187cfb289953b53E3ff1b',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  worldchain: {
+    ica: '0x1996DbFcFB433737fE404F58D2c32A7f5f334210',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
   // zircuit: '0x0d67c56E818a02ABa58cd2394b95EF26db999aA3', // already has a safe
 
   // Aug 5, 2024 batch
-  cyber: '0x984Fe5a45Ac4aaeC4E4655b50f776aB79c9Be19F',
-  degenchain: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
-  kroma: '0xc1e20A0D78E79B94D71d4bDBC8FD0Af7c856Dd7A',
-  lisk: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
-  lukso: '0xc1e20A0D78E79B94D71d4bDBC8FD0Af7c856Dd7A',
-  merlin: '0xCf867cEaeeE8CBe65C680c734D29d26440931D5b',
-  metis: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
-  mint: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
-  proofofplay: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
-  real: '0xc761e68BF3A94326FD0D305e3ccb4cdaab2edA19',
-  sanko: '0x5DAcd2f1AafC749F2935A160865Ab1568eC23752',
-  tangle: '0xCC2aeb692197C7894E561d31ADFE8F79746f7d9F',
-  xai: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
+  cyber: {
+    ica: '0x984Fe5a45Ac4aaeC4E4655b50f776aB79c9Be19F',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  degenchain: {
+    ica: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  kroma: {
+    ica: '0xc1e20A0D78E79B94D71d4bDBC8FD0Af7c856Dd7A',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  lisk: {
+    ica: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  lukso: {
+    ica: '0xc1e20A0D78E79B94D71d4bDBC8FD0Af7c856Dd7A',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  merlin: {
+    ica: '0xCf867cEaeeE8CBe65C680c734D29d26440931D5b',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  metis: {
+    ica: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  mint: {
+    ica: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  proofofplay: {
+    ica: '0xb51e63CD0842D670a13c88B159fCFc268DA652A3',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  real: {
+    ica: '0xc761e68BF3A94326FD0D305e3ccb4cdaab2edA19',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  sanko: {
+    ica: '0x5DAcd2f1AafC749F2935A160865Ab1568eC23752',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  tangle: {
+    ica: '0xCC2aeb692197C7894E561d31ADFE8F79746f7d9F',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  xai: {
+    ica: '0x22d952d3b9F493442731a3c7660aCaD98e55C00A',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
   // taiko: '0x483D218D2FEe7FC7204ba15F00C7901acbF9697D', // already has a safe
 
   // Aug 26, 2024 batch
-  astar: '0x6b241544eBa7d89B51b72DF85a0342dAa37371Ca',
-  astarzkevm: '0x526c6DAee1175A1A2337E703B63593acb327Dde4',
-  bitlayer: '0xe6239316cA60814229E801fF0B9DD71C9CA29008',
-  coredao: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
-  dogechain: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
-  flare: '0x689b8DaBBF2f9Fd83D37427A062B30edF463e20b',
-  molten: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
-  shibarium: '0x6348FAe3a8374dbAAaE84EEe5458AE4063Fe2be7',
+  astar: {
+    ica: '0x6b241544eBa7d89B51b72DF85a0342dAa37371Ca',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  astarzkevm: {
+    ica: '0x526c6DAee1175A1A2337E703B63593acb327Dde4',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  bitlayer: {
+    ica: '0xe6239316cA60814229E801fF0B9DD71C9CA29008',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  coredao: {
+    ica: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  dogechain: {
+    ica: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  flare: {
+    ica: '0x689b8DaBBF2f9Fd83D37427A062B30edF463e20b',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  molten: {
+    ica: '0x84802CdF47565C95d8ffd59E7c4B1cf027F5452F',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  shibarium: {
+    ica: '0x6348FAe3a8374dbAAaE84EEe5458AE4063Fe2be7',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
 
   // Sep 9, 2024 batch
   // ----------------------------
-  everclear: '0x63B2075372D6d0565F51210D0A296D3c8a773aB6',
-  oortmainnet: '0x7021D11F9fAe455AB2f45D72dbc2C64d116Cb657',
+  everclear: {
+    ica: '0x63B2075372D6d0565F51210D0A296D3c8a773aB6',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
+  oortmainnet: {
+    ica: '0x7021D11F9fAe455AB2f45D72dbc2C64d116Cb657',
+    ism: '0x0000000000000000000000000000000000000000',
+  },
 } as const;
 
 export const DEPLOYER = '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba';
 
 export const ethereumChainOwners: ChainMap<OwnableConfig> = Object.fromEntries(
   ethereumChainNames.map((local) => {
-    const owner = icas[local] ?? safes[local] ?? DEPLOYER;
+    const owner = icas[local]?.ica ?? safes[local] ?? DEPLOYER;
 
     return [
       local,
@@ -126,7 +216,10 @@ export const ethereumChainOwners: ChainMap<OwnableConfig> = Object.fromEntries(
           // So we need to keep the Safe and ICA addresses somewhere in the config
           // to be able to track down which addresses are SAFEs, ICAs, or standard SIGNERS.
           ...(safes[local] && { _safeAddress: safes[local] }),
-          ...(icas[local] && { _icaAddress: icas[local] }),
+          ...(icas[local] && {
+            _icaAddress: icas[local].ica,
+            _icaIsmAddress: icas[local].ism,
+          }),
         },
       },
     ];
