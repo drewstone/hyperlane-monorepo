@@ -1,7 +1,7 @@
 import { AccountConfig, InterchainAccount } from '@hyperlane-xyz/sdk';
 import { Address, eqAddress } from '@hyperlane-xyz/utils';
 
-import { icas } from '../../config/environments/mainnet3/owners.js';
+import awIcas from '../../config/environments/mainnet3/aw-icas.json';
 import { getArgs as getEnvArgs } from '../agent-utils.js';
 import { getEnvironmentConfig, getHyperlaneCore } from '../core-utils.js';
 
@@ -38,7 +38,7 @@ async function main() {
     string,
     { Expected: Address; Actual: Address }
   > = {};
-  for (const [chain, expectedAddress] of Object.entries(icas)) {
+  for (const [chain, { ica: expectedAddress }] of Object.entries(awIcas)) {
     const actualAccount = await ica.getAccount(chain, ownerConfig);
     if (!eqAddress(expectedAddress, actualAccount)) {
       mismatchedResults[chain] = {
