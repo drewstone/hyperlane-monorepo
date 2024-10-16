@@ -53,9 +53,23 @@ async function main() {
   const config = getEnvironmentConfig(environment);
   const multiProvider = await config.getMultiProvider();
 
+  let artifacts: ChainMap<IcaArtifact>;
+  try {
+    artifacts = readAbacusWorksIcas(environment);
+  } catch (err) {
+    console.error('Error reading artifacts, defaulting to no artifacts:', err);
+    artifacts = {};
+  }
+
   const originOwner = ownerOverride ?? config.owners[ownerChain]?.owner;
   if (!originOwner) {
     throw new Error(`No owner found for ${ownerChain}`);
+  }
+  if (
+    artifacts[ownerChain]?.ica &&
+    eqAddress(originOwner, artifacts[ownerChain].ica)
+  ) {
+    throw new Error(`Origin owner ${originOwner} must not be an ICA!`);
   }
 
   console.log(`Governance owner on ${ownerChain}: ${originOwner}`);
@@ -82,19 +96,11 @@ async function main() {
   if (chainsArg) {
     chains = chainsArg;
   } else {
+    chains = ica.chains().filter((chain) => chain !== ownerChain);
     console.log(
-      'Chains not supplied, using all ICA supported chains:',
-      ica.chains(),
+      'Chains not supplied, using all ICA supported chains other than the owner chain:',
+      chains,
     );
-    chains = ica.chains();
-  }
-
-  let artifacts: ChainMap<IcaArtifact>;
-  try {
-    artifacts = readAbacusWorksIcas(environment);
-  } catch (err) {
-    console.error('Error reading artifacts, defaulting to no artifacts:', err);
-    artifacts = {};
   }
 
   const results: Record<
