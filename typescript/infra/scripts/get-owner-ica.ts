@@ -1,12 +1,27 @@
-import { AccountConfig, ChainMap, InterchainAccount } from '@hyperlane-xyz/sdk';
+import { ethers } from 'ethers';
+
+import {
+  AccountConfig,
+  AggregationIsmConfig,
+  ChainMap,
+  EvmIsmModule,
+  InterchainAccount,
+  IsmConfig,
+  IsmType,
+  MultisigConfig,
+  MultisigIsmConfig,
+  defaultMultisigConfigs,
+} from '@hyperlane-xyz/sdk';
 import {
   Address,
   assert,
+  deepEquals,
   eqAddress,
   objFilter,
   objMap,
 } from '@hyperlane-xyz/utils';
 
+import awValidators from '../config/environments/mainnet3/aw-validators/hyperlane.json';
 import {
   IcaArtifact,
   persistAbacusWorksIcas,
@@ -105,7 +120,13 @@ async function main() {
 
   const results: Record<
     string,
-    { ica: Address; ism: Address; deployed?: string; recovered?: string }
+    {
+      ica: Address;
+      ism: Address;
+      deployed?: string;
+      recovered?: string;
+      ismRequiredNewDeploy?: string;
+    }
   > = {};
   for (const chain of chains) {
     console.log('Checking ICA for', chain);
@@ -116,26 +137,69 @@ async function main() {
       ismOverride: chainArtifact?.ism ?? (await ica.ism(chain, ownerChain)),
     };
 
+    let deployNewIsm = true;
+
+    // Let's confirm the ISM config is correct
+
+    // For now, hardcode Celo
+    const deployedIsm = eqAddress(
+      chainOwnerConfig.ismOverride,
+      ethers.constants.AddressZero,
+    )
+      ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
+      : chainOwnerConfig.ismOverride;
+
+    const desiredIsmConfig = getIcaIsm(
+      chain,
+      '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+      '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+    );
+    const ismModule = new EvmIsmModule(multiProvider, {
+      chain,
+      config: desiredIsmConfig,
+      addresses: {
+        ...(chainAddresses[chain] as any),
+        deployedIsm: deployedIsm,
+      },
+    });
+
+    const actualIsmConfig = await ismModule.read();
+
+    console.log('deployedIsm:', deployedIsm);
+    console.log('Actual ISM config:', JSON.stringify(actualIsmConfig, null, 2));
+    console.log(
+      'Desired ISM config:',
+      JSON.stringify(desiredIsmConfig, null, 2),
+    );
+    console.log('eq?', deepEquals(actualIsmConfig, desiredIsmConfig));
+
+    if (deepEquals(actualIsmConfig, desiredIsmConfig)) {
+      deployNewIsm = false;
+    } else {
+      console.log('Must deploy a new ISM, ignoring any existing ICA artifacts');
+    }
+
     const account = await ica.getAccount(chain, chainOwnerConfig);
     results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
 
-    if (chainArtifact) {
+    if (chainArtifact && !deployNewIsm) {
       // Try to recover the account
-      const recoveredAccount = await ica.getAccount(chain, chainOwnerConfig);
-      if (eqAddress(recoveredAccount, chainArtifact.ica)) {
+      if (eqAddress(account, chainArtifact.ica)) {
         results[chain].recovered = '✅';
-        continue;
       } else {
         console.error(
           `⚠️⚠️⚠️ Failed to recover ICA for ${chain}. Expected: ${
             chainArtifact.ica
-          }, got: ${recoveredAccount}. Chain owner config: ${JSON.stringify(
+          }, got: ${account}. Chain owner config: ${JSON.stringify(
             chainOwnerConfig,
           )} ⚠️⚠️⚠️`,
         );
         results[chain].recovered = '❌';
+        continue;
       }
     }
+
+    results[chain].ismRequiredNewDeploy = deployNewIsm ? '✅' : '❌';
 
     if (deploy) {
       const deployedAccount = await ica.deployAccount(chain, ownerConfig);
@@ -162,72 +226,76 @@ async function main() {
   persistAbacusWorksIcas(environment, icaArtifacts);
 }
 
-// const merkleRoot = (multisig: MultisigConfig): MultisigIsmConfig => ({
-//   type: IsmType.MERKLE_ROOT_MULTISIG,
-//   ...multisig,
-// });
+const merkleRoot = (multisig: MultisigConfig): MultisigIsmConfig => ({
+  type: IsmType.MERKLE_ROOT_MULTISIG,
+  ...multisig,
+});
 
-// const messageIdIsm = (multisig: MultisigConfig): MultisigIsmConfig => ({
-//   type: IsmType.MESSAGE_ID_MULTISIG,
-//   ...multisig,
-// });
+const messageIdIsm = (multisig: MultisigConfig): MultisigIsmConfig => ({
+  type: IsmType.MESSAGE_ID_MULTISIG,
+  ...multisig,
+});
 
-// const aggregationIsm = (multisig: MultisigConfig): AggregationIsmConfig => ({
-//   type: IsmType.AGGREGATION,
-//   modules: [messageIdIsm(multisig), merkleRoot(multisig)],
-//   threshold: 1,
-// });
+const aggregationIsm = (multisig: MultisigConfig): AggregationIsmConfig => ({
+  type: IsmType.AGGREGATION,
+  modules: [messageIdIsm(multisig), merkleRoot(multisig)],
+  threshold: 1,
+});
 
-// // Plan:
-// //
+// Plan:
+//
 
-// function getIcaIsm(originChain: string, deployer: string): IsmConfig {
-//   const multisig = defaultMultisigConfigs[originChain];
-//   const awValidator =
-//     awValidators[originChain as keyof typeof awValidators].validators?.[0];
-//   // Ensure the AW validator was found and is in the multisig.
-//   if (
-//     !awValidator ||
-//     !multisig.validators.find((v) => eqAddress(v, awValidator))
-//   ) {
-//     throw new Error(
-//       `AW validator for ${originChain} (address: ${awValidator}) found in the validator set`,
-//     );
-//   }
+function getIcaIsm(
+  originChain: string,
+  deployer: string,
+  routingIsmOwner: string,
+): IsmConfig {
+  const multisig = defaultMultisigConfigs[originChain];
+  const awValidator =
+    awValidators[originChain as keyof typeof awValidators].validators?.[0];
+  // Ensure the AW validator was found and is in the multisig.
+  if (
+    !awValidator ||
+    !multisig.validators.find((v) => eqAddress(v, awValidator))
+  ) {
+    throw new Error(
+      `AW validator for ${originChain} (address: ${awValidator}) found in the validator set`,
+    );
+  }
 
-//   // A routing ISM so that the ISM is mutable without requiring a new ICA,
-//   // as the ICA address depends on the ISM address.
-//   return {
-//     type: IsmType.ROUTING,
-//     owner: deployer,
-//     domains: {
-//       [originChain]: {
-//         type: IsmType.AGGREGATION,
-//         modules: [
-//           // This will always use the default ISM.
-//           // We burn ownership and have no domains in the routing table.
-//           {
-//             type: IsmType.FALLBACK_ROUTING,
-//             owner: '0xdead00000000000000000000000000000000dead',
-//             domains: {},
-//           },
-//           {
-//             type: IsmType.AGGREGATION,
-//             modules: [
-//               aggregationIsm(multisig),
-//               messageIdIsm({
-//                 validators: [awValidator, deployer],
-//                 threshold: 1,
-//               }),
-//             ],
-//             threshold: 1,
-//           },
-//         ],
-//         threshold: 2,
-//       },
-//     },
-//   };
-// }
+  // A routing ISM so that the ISM is mutable without requiring a new ICA,
+  // as the ICA address depends on the ISM address.
+  return {
+    type: IsmType.ROUTING,
+    owner: routingIsmOwner,
+    domains: {
+      [originChain]: {
+        type: IsmType.AGGREGATION,
+        modules: [
+          // This will always use the default ISM.
+          // We burn ownership and have no domains in the routing table.
+          {
+            type: IsmType.FALLBACK_ROUTING,
+            owner: '0xdead00000000000000000000000000000000dead',
+            domains: {},
+          },
+          {
+            type: IsmType.AGGREGATION,
+            modules: [
+              aggregationIsm(multisig),
+              messageIdIsm({
+                validators: [awValidator, deployer],
+                threshold: 1,
+              }),
+            ],
+            threshold: 1,
+          },
+        ],
+        threshold: 2,
+      },
+    },
+  };
+}
 
 main()
   .then()
