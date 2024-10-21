@@ -8,6 +8,7 @@ import {
   InterchainAccount,
   IsmConfig,
   IsmType,
+  MultiProvider,
   MultisigConfig,
   MultisigIsmConfig,
   defaultMultisigConfigs,
@@ -129,104 +130,137 @@ async function main() {
       ismRequiredNewDeploy?: string;
     }
   > = {};
-  for (const chain of chains) {
-    console.log('Checking ICA for', chain);
+  const getOwnerIcaChains = (
+    chains?.length ? chains : config.supportedChainNames
+  ).filter(isEthereumProtocolChain);
 
-    const chainArtifact = artifacts[chain];
-    const chainOwnerConfig = {
-      ...ownerConfig,
-      ismOverride: chainArtifact?.ism ?? (await ica.ism(chain, ownerChain)),
-    };
+  // const results: Record<string, { ICA: Address; Deployed?: string }> = {};
+  const settledResults = await Promise.allSettled(
+    getOwnerIcaChains.map(async (chain) => {
+      const chainArtifact = artifacts[chain];
 
-    let deployNewIsm = true;
+      // const chainOwnerConfig = {
+      //   ...ownerConfig,
+      //   ismOverride: chainArtifact?.ism ?? (await ica.ism(chain, ownerChain)),
+      // };
 
-    // Let's confirm the ISM config is correct
+      if (chainArtifact) {
+        const matches = await icaArtifactMatchesExpectedConfig(
+          multiProvider,
+          ica,
+          chainAddresses,
+          ownerChain,
+          chain,
+          chainArtifact,
+        );
+        if (matches) {
+          return { chain, result: chainArtifact };
+        } else {
+          console.warn(
+            `Chain ${chain} ICA artifact does not match expected config, will redeploy`,
+          );
+        }
+      }
 
-    // // For now, hardcode Celo
-    // const deployedIsm = eqAddress(
-    //   chainOwnerConfig.ismOverride,
-    //   ethers.constants.AddressZero,
-    // )
-    //   ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
-    //   : chainOwnerConfig.ismOverride;
-
-    if (deployNewIsm) {
       if (!deploy) {
         console.log(
           'Skipping required ISM deployment for chain',
           chain,
           ', will not have an ICA',
         );
-        continue;
+        return { chain, result: undefined };
       }
+
       const initialConfig = getIcaIsm(
         chain,
         '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
         '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
       );
-    }
 
-    const account = await ica.getAccount(chain, chainOwnerConfig);
-    results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
+      // Deploy ISM
 
-    if (chainArtifact) {
-      // First, ensure the ISM matches the config we want.
-      // The owner of the routing ISM is the ICA itself.
-      const desiredIsmConfig = getIcaIsm(
-        chain,
-        mainnet3Deployer,
-        chainArtifact.ica,
-      );
-      const ismModule = new EvmIsmModule(multiProvider, {
-        chain,
-        config: desiredIsmConfig,
-        addresses: {
-          ...(chainAddresses[chain] as any),
-          deployedIsm: chainArtifact.ism,
-        },
-      });
-      const actualIsmConfig = await ismModule.read();
+      //   console.log('Checking ICA for', chain);
 
-      if (!deepEquals(actualIsmConfig, desiredIsmConfig)) {
-        console.log('ISM mismatch for', chain);
-        deployNewIsm = true;
-        continue;
-      }
+      //   // let deployNewIsm = true;
 
-      // Then, confirm that the ISM address is recoverable.
+      //   // Let's confirm the ISM config is correct
 
-      // Try to recover the account
-      if (eqAddress(account, chainArtifact.ica)) {
-        results[chain].recovered = '✅';
-        deployNewIsm = false;
+      //   // // For now, hardcode Celo
+      //   // const deployedIsm = eqAddress(
+      //   //   chainOwnerConfig.ismOverride,
+      //   //   ethers.constants.AddressZero,
+      //   // )
+      //   //   ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
+      //   //   : chainOwnerConfig.ismOverride;
+
+      //   if (deployNewIsm) {
+      //     if (!deploy) {
+      //       console.log(
+      //         'Skipping required ISM deployment for chain',
+      //         chain,
+      //         ', will not have an ICA',
+      //       );
+      //       return;
+      //     }
+      //     const initialConfig = getIcaIsm(
+      //       chain,
+      //       '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+      //       '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+      //     );
+      //   }
+
+      //   const account = await ica.getAccount(chain, chainOwnerConfig);
+      //   results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
+
+      //   results[chain].ismRequiredNewDeploy = deployNewIsm ? '✅' : '❌';
+
+      //   if (deploy) {
+      //     if (deployNewIsm) {
+      //     }
+
+      //     const deployedAccount = await ica.deployAccount(chain, ownerConfig);
+      //     assert(
+      //       eqAddress(account, deployedAccount),
+      //       'Fatal mismatch between account and deployed account',
+      //     );
+      //     results[chain].deployed = '✅';
+      //   }
+
+      //   try {
+      //     const account = await ica.getAccount(chain, ownerConfig);
+      //     const result: { ICA: Address; Deployed?: string } = { ICA: account };
+
+      //     if (deploy) {
+      //       const deployedAccount = await ica.deployAccount(chain, ownerConfig);
+      //       result.Deployed = eqAddress(account, deployedAccount) ? '✅' : '❌';
+      //       if (result.Deployed === '❌') {
+      //         console.warn(
+      //           `Mismatch between account and deployed account for ${chain}`,
+      //         );
+      //       }
+      //     }
+
+      //     return { chain, result };
+      //   } catch (error) {
+      //     console.error(`Error processing chain ${chain}:`, error);
+      //     return { chain, error };
+      //   }
+      return { chain, result: undefined, error: 'Not implemented' };
+    }),
+  );
+
+  settledResults.forEach((settledResult) => {
+    if (settledResult.status === 'fulfilled') {
+      const { chain, result, error } = settledResult.value;
+      if (error || !result) {
+        console.error(`Failed to process ${chain}:`, error);
       } else {
-        console.error(
-          `⚠️⚠️⚠️ Failed to recover ICA for ${chain}. Expected: ${
-            chainArtifact.ica
-          }, got: ${account}. Chain owner config: ${JSON.stringify(
-            chainOwnerConfig,
-          )} ⚠️⚠️⚠️`,
-        );
-        results[chain].recovered = '❌';
-        deployNewIsm = true;
-        continue;
+        results[chain] = result;
       }
+    } else {
+      console.error(`Promise rejected:`, settledResult.reason);
     }
-
-    results[chain].ismRequiredNewDeploy = deployNewIsm ? '✅' : '❌';
-
-    if (deploy) {
-      if (deployNewIsm) {
-      }
-
-      const deployedAccount = await ica.deployAccount(chain, ownerConfig);
-      assert(
-        eqAddress(account, deployedAccount),
-        'Fatal mismatch between account and deployed account',
-      );
-      results[chain].deployed = '✅';
-    }
-  }
+  });
 
   console.table(results);
 
@@ -241,6 +275,61 @@ async function main() {
     )}`,
   );
   persistAbacusWorksIcas(environment, icaArtifacts);
+}
+
+async function icaArtifactMatchesExpectedConfig(
+  multiProvider: MultiProvider,
+  ica: InterchainAccount,
+  chainAddresses: ChainMap<Record<string, string>>,
+  originChain: string,
+  icaChain: string,
+  icaArtifact: IcaArtifact,
+) {
+  // First, ensure the ISM matches the config we want.
+  // The owner of the routing ISM is the ICA itself.
+  const desiredIsmConfig = getIcaIsm(
+    icaChain,
+    mainnet3Deployer,
+    icaArtifact.ica,
+  );
+  const ismModule = new EvmIsmModule(multiProvider, {
+    chain: icaChain,
+    config: desiredIsmConfig,
+    addresses: {
+      ...(chainAddresses[icaChain] as any),
+      deployedIsm: icaArtifact.ism,
+    },
+  });
+  const actualIsmConfig = await ismModule.read();
+
+  if (!deepEquals(actualIsmConfig, desiredIsmConfig)) {
+    console.log('ISM mismatch for', icaChain);
+    return false;
+  }
+
+  const chainOwnerConfig = {
+    origin: originChain,
+    owner: icaArtifact.ica,
+    ismOverride: icaArtifact.ism,
+  };
+
+  // Then, confirm that the ISM address is recoverable.
+  const account = await ica.getAccount(icaChain, chainOwnerConfig);
+  // results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
+
+  // Try to recover the account
+  if (eqAddress(account, icaArtifact.ica)) {
+    return true;
+  } else {
+    console.error(
+      `⚠️⚠️⚠️ Failed to recover ICA for ${icaChain}. Expected: ${
+        icaArtifact.ica
+      }, got: ${account}. Chain owner config: ${JSON.stringify(
+        chainOwnerConfig,
+      )} ⚠️⚠️⚠️`,
+    );
+    return false;
+  }
 }
 
 const merkleRoot = (multisig: MultisigConfig): MultisigIsmConfig => ({

@@ -58,6 +58,8 @@ export const safes: ChainMap<Address> = {
   zircuit: '0x9e2fe7723b018d02cDE4f5cC1A9bC9C65b922Fc8',
 };
 
+export const icaOwnerChain = 'ethereum';
+
 export const DEPLOYER = '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba';
 
 export const ethereumChainOwners: ChainMap<OwnableConfig> = Object.fromEntries(
