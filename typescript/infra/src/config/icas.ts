@@ -8,7 +8,7 @@ import { DeployEnvironment } from './environment.js';
 
 export interface IcaArtifact {
   ica: Address;
-  ism?: Address;
+  ism: Address;
 }
 
 export function persistAbacusWorksIcas(

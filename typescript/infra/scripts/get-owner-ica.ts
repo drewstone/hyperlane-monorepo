@@ -22,6 +22,7 @@ import {
 } from '@hyperlane-xyz/utils';
 
 import awValidators from '../config/environments/mainnet3/aw-validators/hyperlane.json';
+import { DEPLOYER as mainnet3Deployer } from '../config/environments/mainnet3/owners.js';
 import {
   IcaArtifact,
   persistAbacusWorksIcas,
@@ -141,51 +142,63 @@ async function main() {
 
     // Let's confirm the ISM config is correct
 
-    // For now, hardcode Celo
-    const deployedIsm = eqAddress(
-      chainOwnerConfig.ismOverride,
-      ethers.constants.AddressZero,
-    )
-      ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
-      : chainOwnerConfig.ismOverride;
+    // // For now, hardcode Celo
+    // const deployedIsm = eqAddress(
+    //   chainOwnerConfig.ismOverride,
+    //   ethers.constants.AddressZero,
+    // )
+    //   ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
+    //   : chainOwnerConfig.ismOverride;
 
-    const desiredIsmConfig = getIcaIsm(
-      chain,
-      '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
-      '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
-    );
-    const ismModule = new EvmIsmModule(multiProvider, {
-      chain,
-      config: desiredIsmConfig,
-      addresses: {
-        ...(chainAddresses[chain] as any),
-        deployedIsm: deployedIsm,
-      },
-    });
-
-    const actualIsmConfig = await ismModule.read();
-
-    console.log('deployedIsm:', deployedIsm);
-    console.log('Actual ISM config:', JSON.stringify(actualIsmConfig, null, 2));
-    console.log(
-      'Desired ISM config:',
-      JSON.stringify(desiredIsmConfig, null, 2),
-    );
-    console.log('eq?', deepEquals(actualIsmConfig, desiredIsmConfig));
-
-    if (deepEquals(actualIsmConfig, desiredIsmConfig)) {
-      deployNewIsm = false;
-    } else {
-      console.log('Must deploy a new ISM, ignoring any existing ICA artifacts');
+    if (deployNewIsm) {
+      if (!deploy) {
+        console.log(
+          'Skipping required ISM deployment for chain',
+          chain,
+          ', will not have an ICA',
+        );
+        continue;
+      }
+      const initialConfig = getIcaIsm(
+        chain,
+        '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+        '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+      );
     }
 
     const account = await ica.getAccount(chain, chainOwnerConfig);
     results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
 
-    if (chainArtifact && !deployNewIsm) {
+    if (chainArtifact) {
+      // First, ensure the ISM matches the config we want.
+      // The owner of the routing ISM is the ICA itself.
+      const desiredIsmConfig = getIcaIsm(
+        chain,
+        mainnet3Deployer,
+        chainArtifact.ica,
+      );
+      const ismModule = new EvmIsmModule(multiProvider, {
+        chain,
+        config: desiredIsmConfig,
+        addresses: {
+          ...(chainAddresses[chain] as any),
+          deployedIsm: chainArtifact.ism,
+        },
+      });
+      const actualIsmConfig = await ismModule.read();
+
+      if (!deepEquals(actualIsmConfig, desiredIsmConfig)) {
+        console.log('ISM mismatch for', chain);
+        deployNewIsm = true;
+        continue;
+      }
+
+      // Then, confirm that the ISM address is recoverable.
+
       // Try to recover the account
       if (eqAddress(account, chainArtifact.ica)) {
         results[chain].recovered = '✅';
+        deployNewIsm = false;
       } else {
         console.error(
           `⚠️⚠️⚠️ Failed to recover ICA for ${chain}. Expected: ${
@@ -195,6 +208,7 @@ async function main() {
           )} ⚠️⚠️⚠️`,
         );
         results[chain].recovered = '❌';
+        deployNewIsm = true;
         continue;
       }
     }
@@ -202,6 +216,9 @@ async function main() {
     results[chain].ismRequiredNewDeploy = deployNewIsm ? '✅' : '❌';
 
     if (deploy) {
+      if (deployNewIsm) {
+      }
+
       const deployedAccount = await ica.deployAccount(chain, ownerConfig);
       assert(
         eqAddress(account, deployedAccount),
