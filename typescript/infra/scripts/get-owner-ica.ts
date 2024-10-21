@@ -4,6 +4,7 @@ import {
   AccountConfig,
   AggregationIsmConfig,
   ChainMap,
+  EV5JsonRpcTxSubmitter,
   EvmIsmModule,
   InterchainAccount,
   IsmConfig,
@@ -171,11 +172,78 @@ async function main() {
         return { chain, result: undefined };
       }
 
-      const initialConfig = getIcaIsm(
+      // First, set the deployer key as the owner of the routing ISM.
+      // This is because we don't yet know the ICA address, which depends
+      // on the ISM address.
+      const initialIsmConfig = getIcaIsm(
         chain,
-        '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
-        '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
+        mainnet3Deployer,
+        mainnet3Deployer,
       );
+
+      // const ismModule = new EvmIsmModule(multiProvider, {
+      //   chain,
+      //   config: initialIsmConfig,
+      //   addresses: {
+      //     ...(chainAddresses[icaChain] as any),
+      //     deployedIsm: icaArtifact.ism,
+      //   },
+      // });
+
+      // chain,
+      // config,
+      // proxyFactoryFactories,
+      // mailbox,
+      // multiProvider,
+      // contractVerifier,
+
+      const ismModule = await EvmIsmModule.create({
+        chain,
+        config: initialIsmConfig,
+        proxyFactoryFactories: chainAddresses[chain] as any,
+        multiProvider,
+        mailbox: chainAddresses[chain].mailbox,
+      });
+
+      const chainOwnerConfig = {
+        ...ownerConfig,
+        ismOverride: ismModule.serialize().deployedIsm,
+      };
+
+      const deployedIca = await ica.deployAccount(chain, chainOwnerConfig);
+
+      const finalIsmConfig = getIcaIsm(chain, mainnet3Deployer, deployedIca);
+
+      const submitter = new EV5JsonRpcTxSubmitter(multiProvider);
+      const updateTxs = await ismModule.update(finalIsmConfig);
+      await submitter.submit(...updateTxs);
+
+      const newChainArtifact = {
+        ica: deployedIca,
+        ism: chainOwnerConfig.ismOverride,
+      };
+
+      const matches = await icaArtifactMatchesExpectedConfig(
+        multiProvider,
+        ica,
+        chainAddresses,
+        ownerChain,
+        chain,
+        chainArtifact,
+      );
+
+      if (!matches) {
+        console.log(
+          'Somehow after everything, the ICA artifact still does not match the expected config!',
+        );
+        return {
+          chain,
+          result: newChainArtifact,
+          error: 'Mismatch after deployment',
+        };
+      }
+
+      return { chain, result: newChainArtifact };
 
       // Deploy ISM
 
