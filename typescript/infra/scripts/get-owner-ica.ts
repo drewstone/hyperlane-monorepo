@@ -145,7 +145,10 @@ async function main() {
       //   ismOverride: chainArtifact?.ism ?? (await ica.ism(chain, ownerChain)),
       // };
 
-      if (chainArtifact) {
+      if (
+        chainArtifact &&
+        !eqAddress(chainArtifact.ism, ethers.constants.AddressZero)
+      ) {
         const matches = await icaArtifactMatchesExpectedConfig(
           multiProvider,
           ica,
