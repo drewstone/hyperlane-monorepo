@@ -216,6 +216,7 @@ async function main() {
 
       const submitter = new EV5JsonRpcTxSubmitter(multiProvider);
       const updateTxs = await ismModule.update(finalIsmConfig);
+      console.log('update txs', updateTxs);
       await submitter.submit(...updateTxs);
 
       const newChainArtifact = {
