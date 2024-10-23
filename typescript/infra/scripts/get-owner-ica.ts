@@ -213,7 +213,12 @@ async function main() {
         ismOverride: ismModule.serialize().deployedIsm,
       };
 
+      console.log('Deploying ICA for', chain);
+      console.log('ISM config:', chainOwnerConfig);
+
       const deployedIca = await ica.deployAccount(chain, chainOwnerConfig);
+
+      console.log('Deployed ICA:', deployedIca);
 
       const finalIsmConfig = getIcaIsm(chain, mainnet3Deployer, deployedIca);
 
