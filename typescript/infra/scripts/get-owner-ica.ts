@@ -13,6 +13,7 @@ import {
   MultisigConfig,
   MultisigIsmConfig,
   defaultMultisigConfigs,
+  normalizeConfig,
 } from '@hyperlane-xyz/sdk';
 import {
   Address,
@@ -83,6 +84,7 @@ async function main() {
   if (!originOwner) {
     throw new Error(`No owner found for ${ownerChain}`);
   }
+  // Protect against accidentally using an ICA as the owner
   if (
     artifacts[ownerChain]?.ica &&
     eqAddress(originOwner, artifacts[ownerChain].ica)
@@ -131,20 +133,13 @@ async function main() {
       ismRequiredNewDeploy?: string;
     }
   > = {};
-  const getOwnerIcaChains = (
-    chains?.length ? chains : config.supportedChainNames
-  ).filter(isEthereumProtocolChain);
 
-  // const results: Record<string, { ICA: Address; Deployed?: string }> = {};
   const settledResults = await Promise.allSettled(
-    getOwnerIcaChains.map(async (chain) => {
+    chains.map(async (chain) => {
       const chainArtifact = artifacts[chain];
 
-      // const chainOwnerConfig = {
-      //   ...ownerConfig,
-      //   ismOverride: chainArtifact?.ism ?? (await ica.ism(chain, ownerChain)),
-      // };
-
+      // If there's an existing ICA artifact, check if it matches the expected config.
+      // If it does, we're done on this chain.
       if (
         chainArtifact &&
         !eqAddress(chainArtifact.ism, ethers.constants.AddressZero)
@@ -154,6 +149,7 @@ async function main() {
           ica,
           chainAddresses,
           ownerChain,
+          originOwner,
           chain,
           chainArtifact,
         );
@@ -237,8 +233,9 @@ async function main() {
         ica,
         chainAddresses,
         ownerChain,
+        originOwner,
         chain,
-        chainArtifact,
+        newChainArtifact,
       );
 
       if (!matches) {
@@ -359,6 +356,7 @@ async function icaArtifactMatchesExpectedConfig(
   ica: InterchainAccount,
   chainAddresses: ChainMap<Record<string, string>>,
   originChain: string,
+  originOwner: string,
   icaChain: string,
   icaArtifact: IcaArtifact,
 ) {
@@ -379,20 +377,30 @@ async function icaArtifactMatchesExpectedConfig(
   });
   const actualIsmConfig = await ismModule.read();
 
-  if (!deepEquals(actualIsmConfig, desiredIsmConfig)) {
+  if (
+    !deepEquals(
+      normalizeConfig(actualIsmConfig),
+      normalizeConfig(desiredIsmConfig),
+    )
+  ) {
     console.log('ISM mismatch for', icaChain);
+    console.log('actualIsmConfig:', JSON.stringify(actualIsmConfig));
+    console.log('desiredIsmConfig:', JSON.stringify(desiredIsmConfig));
     return false;
   }
 
   const chainOwnerConfig = {
     origin: originChain,
-    owner: icaArtifact.ica,
+    owner: originOwner,
     ismOverride: icaArtifact.ism,
   };
 
   // Then, confirm that the ISM address is recoverable.
   const account = await ica.getAccount(icaChain, chainOwnerConfig);
   // results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
+
+  console.log('account', account);
+  console.log('icaArtifact.ica', icaArtifact.ica);
 
   // Try to recover the account
   if (eqAddress(account, icaArtifact.ica)) {
