@@ -115,3 +115,7 @@ export type ParsedLegacyMultisigIsmMetadata = {
 export type Annotated<T> = T & {
   annotation?: string;
 };
+
+export type ValidatorMetadata = {
+  git_sha: string;
+};
