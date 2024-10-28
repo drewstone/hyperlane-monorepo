@@ -61,6 +61,14 @@ function getArgs() {
     .alias('chains', 'destinationChains').argv;
 }
 
+interface IcaDeployResult {
+  chain: string;
+  result?: IcaArtifact;
+  error?: string;
+  deployed?: string;
+  recovered?: string;
+}
+
 async function main() {
   const {
     environment,
@@ -98,7 +106,7 @@ async function main() {
   // Filter out non-EVM chains
   const ethereumChainAddresses = objFilter(
     chainAddresses,
-    (chain, addresses): addresses is Record<string, string> => {
+    (chain, _addresses): _addresses is Record<string, string> => {
       return isEthereumProtocolChain(chain);
     },
   );
@@ -123,27 +131,22 @@ async function main() {
     );
   }
 
-  const results: Record<
-    string,
-    {
-      ica: Address;
-      ism: Address;
-      deployed?: string;
-      recovered?: string;
-      ismRequiredNewDeploy?: string;
-    }
-  > = {};
-
   const settledResults = await Promise.allSettled(
     chains.map(async (chain) => {
       const chainArtifact = artifacts[chain];
 
       // If there's an existing ICA artifact, check if it matches the expected config.
-      // If it does, we're done on this chain.
+      // If it does, consider it recovered and deployed, and we're done on this chain.
       if (
         chainArtifact &&
         !eqAddress(chainArtifact.ism, ethers.constants.AddressZero)
       ) {
+        console.log(
+          'Attempting ICA recovery on chain',
+          chain,
+          'with existing artifact',
+          chainArtifact,
+        );
         const matches = await icaArtifactMatchesExpectedConfig(
           multiProvider,
           ica,
@@ -154,7 +157,13 @@ async function main() {
           chainArtifact,
         );
         if (matches) {
-          return { chain, result: chainArtifact };
+          console.log('Recovered ICA on chain', chain);
+          return {
+            chain,
+            result: chainArtifact,
+            deployed: '✅',
+            recovered: '✅',
+          };
         } else {
           console.warn(
             `Chain ${chain} ICA artifact does not match expected config, will redeploy`,
@@ -162,174 +171,44 @@ async function main() {
         }
       }
 
+      // At this point, we must do some deploy actions, so back out if not allowed.
       if (!deploy) {
         console.log(
           'Skipping required ISM deployment for chain',
           chain,
           ', will not have an ICA',
         );
-        return { chain, result: undefined };
+        return { chain, result: undefined, deployed: '❌', recovered: '❌' };
       }
 
-      // First, set the deployer key as the owner of the routing ISM.
-      // This is because we don't yet know the ICA address, which depends
-      // on the ISM address.
-      const initialIsmConfig = getIcaIsm(
+      return deployNewIca(
         chain,
-        mainnet3Deployer,
-        mainnet3Deployer,
-      );
-
-      // const ismModule = new EvmIsmModule(multiProvider, {
-      //   chain,
-      //   config: initialIsmConfig,
-      //   addresses: {
-      //     ...(chainAddresses[icaChain] as any),
-      //     deployedIsm: icaArtifact.ism,
-      //   },
-      // });
-
-      // chain,
-      // config,
-      // proxyFactoryFactories,
-      // mailbox,
-      // multiProvider,
-      // contractVerifier,
-
-      const ismModule = await EvmIsmModule.create({
-        chain,
-        config: initialIsmConfig,
-        proxyFactoryFactories: chainAddresses[chain] as any,
-        multiProvider,
-        mailbox: chainAddresses[chain].mailbox,
-      });
-
-      const chainOwnerConfig = {
-        ...ownerConfig,
-        ismOverride: ismModule.serialize().deployedIsm,
-      };
-
-      console.log('Deploying ICA for', chain);
-      console.log('ISM config:', chainOwnerConfig);
-
-      const deployedIca = await ica.deployAccount(chain, chainOwnerConfig);
-
-      console.log('Deployed ICA:', deployedIca);
-
-      const finalIsmConfig = getIcaIsm(chain, mainnet3Deployer, deployedIca);
-
-      const submitter = new EV5JsonRpcTxSubmitter(multiProvider);
-      const updateTxs = await ismModule.update(finalIsmConfig);
-      console.log('update txs', updateTxs);
-      await submitter.submit(...updateTxs);
-
-      const newChainArtifact = {
-        ica: deployedIca,
-        ism: chainOwnerConfig.ismOverride,
-      };
-
-      const matches = await icaArtifactMatchesExpectedConfig(
         multiProvider,
         ica,
         chainAddresses,
         ownerChain,
         originOwner,
-        chain,
-        newChainArtifact,
+        ownerConfig,
       );
-
-      if (!matches) {
-        console.log(
-          'Somehow after everything, the ICA artifact still does not match the expected config!',
-        );
-        return {
-          chain,
-          result: newChainArtifact,
-          error: 'Mismatch after deployment',
-        };
-      }
-
-      return { chain, result: newChainArtifact };
-
-      // Deploy ISM
-
-      //   console.log('Checking ICA for', chain);
-
-      //   // let deployNewIsm = true;
-
-      //   // Let's confirm the ISM config is correct
-
-      //   // // For now, hardcode Celo
-      //   // const deployedIsm = eqAddress(
-      //   //   chainOwnerConfig.ismOverride,
-      //   //   ethers.constants.AddressZero,
-      //   // )
-      //   //   ? '0xa6f4835940dbA46E295076D0CD0411349C33789f'
-      //   //   : chainOwnerConfig.ismOverride;
-
-      //   if (deployNewIsm) {
-      //     if (!deploy) {
-      //       console.log(
-      //         'Skipping required ISM deployment for chain',
-      //         chain,
-      //         ', will not have an ICA',
-      //       );
-      //       return;
-      //     }
-      //     const initialConfig = getIcaIsm(
-      //       chain,
-      //       '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
-      //       '0xa7ECcdb9Be08178f896c26b7BbD8C3D4E844d9Ba',
-      //     );
-      //   }
-
-      //   const account = await ica.getAccount(chain, chainOwnerConfig);
-      //   results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
-
-      //   results[chain].ismRequiredNewDeploy = deployNewIsm ? '✅' : '❌';
-
-      //   if (deploy) {
-      //     if (deployNewIsm) {
-      //     }
-
-      //     const deployedAccount = await ica.deployAccount(chain, ownerConfig);
-      //     assert(
-      //       eqAddress(account, deployedAccount),
-      //       'Fatal mismatch between account and deployed account',
-      //     );
-      //     results[chain].deployed = '✅';
-      //   }
-
-      //   try {
-      //     const account = await ica.getAccount(chain, ownerConfig);
-      //     const result: { ICA: Address; Deployed?: string } = { ICA: account };
-
-      //     if (deploy) {
-      //       const deployedAccount = await ica.deployAccount(chain, ownerConfig);
-      //       result.Deployed = eqAddress(account, deployedAccount) ? '✅' : '❌';
-      //       if (result.Deployed === '❌') {
-      //         console.warn(
-      //           `Mismatch between account and deployed account for ${chain}`,
-      //         );
-      //       }
-      //     }
-
-      //     return { chain, result };
-      //   } catch (error) {
-      //     console.error(`Error processing chain ${chain}:`, error);
-      //     return { chain, error };
-      //   }
-      return { chain, result: undefined, error: 'Not implemented' };
     }),
   );
 
+  // User-friendly output for the console.table
+  const results: Record<string, Omit<IcaDeployResult, 'chain'>> = {};
+  // Map of chain to ICA artifact
+  const icaArtifacts: ChainMap<IcaArtifact> = {};
   settledResults.forEach((settledResult) => {
     if (settledResult.status === 'fulfilled') {
-      const { chain, result, error } = settledResult.value;
+      const { chain, result, error, deployed, recovered } = settledResult.value;
       if (error || !result) {
         console.error(`Failed to process ${chain}:`, error);
       } else {
-        results[chain] = result;
+        results[chain] = {
+          deployed,
+          recovered,
+          ...result,
+        };
+        icaArtifacts[chain] = result;
       }
     } else {
       console.error(`Promise rejected:`, settledResult.reason);
@@ -338,17 +217,90 @@ async function main() {
 
   console.table(results);
 
-  const icaArtifacts = objMap(results, (_chain, { ica, ism }) => ({
-    ica,
-    ism,
-  }));
-
   console.log(
     `Writing results to local artifacts: ${getAbacusWorksIcasPath(
       environment,
     )}`,
   );
   persistAbacusWorksIcas(environment, icaArtifacts);
+}
+
+async function deployNewIca(
+  chain: string,
+  multiProvider: MultiProvider,
+  ica: InterchainAccount,
+  chainAddresses: ChainMap<Record<string, string>>,
+  ownerChain: string,
+  originOwner: string,
+  ownerConfig: AccountConfig,
+): Promise<IcaDeployResult> {
+  // First, set the deployer key as the owner of the routing ISM.
+  // This is because we don't yet know the ICA address, which depends
+  // on the ISM address.
+  const initialIsmConfig = getIcaIsm(chain, mainnet3Deployer, mainnet3Deployer);
+
+  console.log('Deploying ISM for ICA on chain', chain);
+  const ismModule = await EvmIsmModule.create({
+    chain,
+    config: initialIsmConfig,
+    proxyFactoryFactories: chainAddresses[chain] as any,
+    multiProvider,
+    mailbox: chainAddresses[chain].mailbox,
+  });
+
+  const chainOwnerConfig = {
+    ...ownerConfig,
+    ismOverride: ismModule.serialize().deployedIsm,
+  };
+
+  console.log(
+    'Deploying ICA on chain',
+    chain,
+    'with owner config',
+    chainOwnerConfig,
+  );
+
+  const deployedIca = await ica.deployAccount(chain, chainOwnerConfig);
+
+  console.log(`Deployed ICA on chain: ${chain}: ${deployedIca}`);
+
+  const finalIsmConfig = getIcaIsm(chain, mainnet3Deployer, deployedIca);
+
+  const submitter = new EV5JsonRpcTxSubmitter(multiProvider);
+  const updateTxs = await ismModule.update(finalIsmConfig);
+  console.log(
+    `Updating routing ISM owner on ${chain} with transactions:`,
+    updateTxs,
+  );
+  await submitter.submit(...updateTxs);
+
+  const newChainArtifact = {
+    ica: deployedIca,
+    ism: chainOwnerConfig.ismOverride,
+  };
+
+  const matches = await icaArtifactMatchesExpectedConfig(
+    multiProvider,
+    ica,
+    chainAddresses,
+    ownerChain,
+    originOwner,
+    chain,
+    newChainArtifact,
+  );
+
+  if (!matches) {
+    console.log(
+      `Somehow after everything, the ICA artifact on chain ${chain} still does not match the expected config! There's probably a bug.`,
+    );
+    return {
+      chain,
+      result: undefined,
+      error: 'Mismatch after deployment',
+    };
+  }
+
+  return { chain, result: newChainArtifact, deployed: '✅', recovered: '❌' };
 }
 
 async function icaArtifactMatchesExpectedConfig(
@@ -397,10 +349,6 @@ async function icaArtifactMatchesExpectedConfig(
 
   // Then, confirm that the ISM address is recoverable.
   const account = await ica.getAccount(icaChain, chainOwnerConfig);
-  // results[chain] = { ica: account, ism: chainOwnerConfig.ismOverride };
-
-  console.log('account', account);
-  console.log('icaArtifact.ica', icaArtifact.ica);
 
   // Try to recover the account
   if (eqAddress(account, icaArtifact.ica)) {
@@ -417,6 +365,8 @@ async function icaArtifactMatchesExpectedConfig(
   }
 }
 
+// -- ISM config generation --
+
 const merkleRoot = (multisig: MultisigConfig): MultisigIsmConfig => ({
   type: IsmType.MERKLE_ROOT_MULTISIG,
   ...multisig,
@@ -432,9 +382,6 @@ const aggregationIsm = (multisig: MultisigConfig): AggregationIsmConfig => ({
   modules: [messageIdIsm(multisig), merkleRoot(multisig)],
   threshold: 1,
 });
-
-// Plan:
-//
 
 function getIcaIsm(
   originChain: string,
