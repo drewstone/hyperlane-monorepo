@@ -63,6 +63,7 @@ export const safes: ChainMap<Address> = {
 
 export const icaOwnerChain = 'ethereum';
 
+// Can be removed after moving to the new ICAs:
 // Found by running:
 // yarn tsx ./scripts/get-owner-ica.ts -e mainnet3 --ownerChain ethereum --destinationChains <chain1> <chain2> ...
 export const oldIcas: Partial<
