@@ -132,15 +132,6 @@ export class InterchainAccount extends RouterApp<InterchainAccountFactories> {
     return destinationAccount;
   }
 
-  async ism(
-    destinationChain: ChainName,
-    originChain: ChainName,
-  ): Promise<Address> {
-    const destinationRouter = this.mustGetRouter(destinationChain);
-    const originDomain = this.multiProvider.getDomainId(originChain);
-    return bytes32ToAddress(await destinationRouter.isms(originDomain));
-  }
-
   // meant for ICA governance to return the populatedTx
   async getCallRemote({
     chain,
