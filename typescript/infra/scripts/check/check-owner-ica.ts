@@ -1,12 +1,14 @@
 import { AccountConfig, InterchainAccount } from '@hyperlane-xyz/sdk';
-import { Address, eqAddress } from '@hyperlane-xyz/utils';
+import { eqAddress, isZeroishAddress } from '@hyperlane-xyz/utils';
 
 import awIcas from '../../config/environments/mainnet3/aw-icas.json';
-import { getArgs as getEnvArgs } from '../agent-utils.js';
+import { IcaArtifact } from '../../src/config/icas.js';
+import { isEthereumProtocolChain } from '../../src/utils/utils.js';
+import { getArgs as getEnvArgs, withChains } from '../agent-utils.js';
 import { getEnvironmentConfig, getHyperlaneCore } from '../core-utils.js';
 
 function getArgs() {
-  return getEnvArgs().option('ownerChain', {
+  return withChains(getEnvArgs()).option('ownerChain', {
     type: 'string',
     description: 'Origin chain where the Safe owner lives',
     default: 'ethereum',
@@ -14,7 +16,7 @@ function getArgs() {
 }
 
 async function main() {
-  const { environment, ownerChain } = await getArgs();
+  const { environment, ownerChain, chains } = await getArgs();
   const config = getEnvironmentConfig(environment);
   const multiProvider = await config.getMultiProvider();
 
@@ -29,21 +31,44 @@ async function main() {
   const { chainAddresses } = await getHyperlaneCore(environment, multiProvider);
   const ica = InterchainAccount.fromAddressesMap(chainAddresses, multiProvider);
 
+  const checkOwnerIcaChains = (
+    chains?.length ? chains : Object.keys(awIcas)
+  ).filter(isEthereumProtocolChain);
+
   const ownerConfig: AccountConfig = {
     origin: ownerChain,
     owner: owner,
   };
+  const ownerChainInterchainAccountRouter =
+    ica.contractsMap[ownerChain].interchainAccountRouter.address;
+
+  if (isZeroishAddress(ownerChainInterchainAccountRouter)) {
+    console.error(`Interchain account router address is zero`);
+    process.exit(1);
+  }
 
   const mismatchedResults: Record<
     string,
-    { Expected: Address; Actual: Address }
+    { Expected: IcaArtifact; Actual: IcaArtifact }
   > = {};
-  for (const [chain, { ica: expectedAddress }] of Object.entries(awIcas)) {
-    const actualAccount = await ica.getAccount(chain, ownerConfig);
-    if (!eqAddress(expectedAddress, actualAccount)) {
+  for (const chain of checkOwnerIcaChains) {
+    const expected = awIcas[chain as keyof typeof awIcas];
+    if (!expected) {
+      console.error(`No expected address found for ${chain}`);
+      continue;
+    }
+    const actualAccount = await ica.getAccount(chain, {
+      ...ownerConfig,
+      ismOverride: expected.ism,
+      routerOverride: ownerChainInterchainAccountRouter,
+    });
+    if (!eqAddress(expected.ica, actualAccount)) {
       mismatchedResults[chain] = {
-        Expected: expectedAddress,
-        Actual: actualAccount,
+        Expected: expected,
+        Actual: {
+          ica: actualAccount,
+          ism: expected.ism,
+        },
       };
     }
   }
@@ -55,6 +80,7 @@ async function main() {
   } else {
     console.log('✅ All ICAs match the expected addresses.');
   }
+  process.exit(0);
 }
 
 main().catch((err) => {

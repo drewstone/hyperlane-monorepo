@@ -20,6 +20,7 @@ import {
   assert,
   deepEquals,
   eqAddress,
+  isZeroishAddress,
   objFilter,
   objMap,
 } from '@hyperlane-xyz/utils';
@@ -119,6 +120,13 @@ async function main() {
     origin: ownerChain,
     owner: originOwner,
   };
+  const ownerChainInterchainAccountRouter =
+    ica.contractsMap[ownerChain].interchainAccountRouter.address;
+
+  if (isZeroishAddress(ownerChainInterchainAccountRouter)) {
+    console.error(`Interchain account router address is zero`);
+    process.exit(1);
+  }
 
   let chains: string[];
   if (chainsArg) {
